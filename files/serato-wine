@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Launcher inside the container. run.sh passes its arguments here:
+#   serato-wine                    launch Serato DJ Pro (or Lite, if only that is installed)
+#   serato-wine --install FILE     set up the prefix and run the Serato installer
+#   serato-wine --check            report problems, change nothing
+set -uo pipefail
+export WINEPREFIX="${WINEPREFIX:-$HOME/prefix}"
+
+# The installed exe: Pro if present, else Lite. Empty if neither.
+find_exe() {
+  local e
+  for e in Pro Lite; do
+    e="$WINEPREFIX/drive_c/Program Files/Serato/Serato DJ $e/Serato DJ $e.exe"
+    [[ -f $e ]] && { echo "$e"; return; }
+  done
+}
+
+reg() { wine reg add "$@" /f >/dev/null; }
+
+# One-off prefix settings. Safe to repeat.
+setup_prefix() {
+  [[ -f $WINEPREFIX/system.reg ]] || { echo "==> Creating the Wine prefix"; wineboot -i; }
+  echo "==> Windows 10, no tray icons"
+  wine winecfg /v win10
+  # GNOME on Wayland draws Wine's tray icons as black squares.
+  reg 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer' /v NoTrayItemsDisplay /t REG_DWORD /d 1
+  install_vcrun
+}
+
+# Microsoft's C++ runtime, extracted into /opt/vcrun by the Dockerfile: copy it
+# into the prefix and tell Wine to use it over its own (Serato crashes in Wine's
+# msvcp140 when loading a track). Only does work when something is out of date.
+VCRUN_SYS="$WINEPREFIX/drive_c/windows/system32"
+vcrun_ok() {
+  local f
+  for f in /opt/vcrun/*.dll; do cmp -s "$f" "$VCRUN_SYS/${f##*/}" || return 1; done
+  grep -q '"msvcp140"="native,builtin"' "$WINEPREFIX/user.reg" 2>/dev/null
+}
+install_vcrun() {
+  vcrun_ok && return 0
+  echo "==> Microsoft C++ runtime"
+  local f d
+  for f in /opt/vcrun/*.dll; do
+    d="$(basename "$f" .dll)"
+    cp "$f" "$VCRUN_SYS/$d.dll"
+    reg 'HKCU\Software\Wine\DllOverrides' /v "$d" /d native,builtin
+  done
+}
+
+# Sign-in returns to Serato through seratodjpro:// or seratodjlite:// links
+# (see serato-link-handler.sh). Registers the one for each installed edition.
+register_links() {
+  local e exe win k
+  for e in Pro Lite; do
+    exe="$WINEPREFIX/drive_c/Program Files/Serato/Serato DJ $e/Serato DJ $e.exe"
+    [[ -f $exe ]] || continue
+    win="C:\\${exe#"$WINEPREFIX/drive_c/"}"; win="${win//\//\\}"
+    k="HKLM\\Software\\Classes\\seratodj${e,,}"
+    echo "==> seratodj${e,,}:// -> $win"
+    reg "$k" /ve /d "URL:Serato DJ $e Protocol"
+    reg "$k" /v 'URL Protocol' /d ''
+    reg "$k\\shell\\open\\command" /ve /d "\"$win\" \"%1\""
+  done
+}
+
+check() {
+  local bad=0
+  ok()   { printf '  \033[32mok\033[0m    %s\n' "$*"; }
+  warn() { printf '  \033[33mwarn\033[0m  %s\n' "$*"; bad=1; }
+  echo "Wine:      $(wine --version)"
+  echo "Prefix:    $WINEPREFIX"
+  local exe; exe="$(find_exe)"
+  [[ -n $exe ]] && ok "installed: $(basename "$exe")" || warn "Serato not installed (./run.sh --install FILE)"
+  local gl; gl="$(glxinfo -B 2>/dev/null | sed -n 's/.*OpenGL renderer string: //p')"
+  [[ -n $gl && $gl != *llvmpipe* ]] && ok "GPU: $gl" || warn "no hardware OpenGL (${gl:-none}); check /dev/dri and DISPLAY"
+  vcrun_ok && ok "Microsoft C++ runtime" || warn "Microsoft C++ runtime not set up (fixed on next launch)"
+  [[ -e /dev/ntsync ]] && ok "ntsync" || warn "no /dev/ntsync (sudo ./host-setup.sh)"
+  [[ -S ${PULSE_SERVER#unix:} ]] && ok "PulseAudio/PipeWire socket" || warn "no PulseAudio socket (laptop speakers)"
+  local cards; cards="$(aplay -l 2>/dev/null | grep '^card' | sed 's/^/          /')"
+  [[ -n $cards ]] && { ok "ALSA cards:"; echo "$cards"; } || warn "no ALSA cards visible"
+  [[ -e /dev/snd/seq ]] && ok "ALSA MIDI sequencer" || warn "no /dev/snd/seq (controllers send MIDI through it)"
+  return $bad
+}
+
+case "${1:-}" in
+  --check) check ;;
+  --install)
+    [[ -f ${2:-} ]] || { echo "usage: serato-wine --install FILE.exe (or .zip)" >&2; exit 2; }
+    setup_prefix
+    inst="$2"
+    if [[ $inst == *.zip ]]; then
+      tmp="$(mktemp -d)"; unzip -q "$inst" -d "$tmp"
+      inst="$(find "$tmp" -iname '*.exe' | head -1)"
+      [[ -n $inst ]] || { echo "no .exe inside $2" >&2; exit 1; }
+    fi
+    echo "==> Running $(basename "$inst")"
+    WINEDEBUG="${WINEDEBUG:-err+all}" wine "$inst"
+    wineserver -w
+    exe="$(find_exe)"
+    [[ -n $exe ]] || { echo "==> Installer finished, but no Serato DJ exe found" >&2; exit 1; }
+    echo "==> Installed: $exe"
+    register_links; wineserver -w
+    ;;
+  --setup) setup_prefix; register_links; wineserver -w ;;
+  ""|seratodjpro://*|seratodjlite://*)
+    exe="$(find_exe)"
+    [[ -n $exe ]] || { echo "Serato isn't installed; run ./run.sh --install FILE" >&2; exit 1; }
+    install_vcrun   # prefixes from before this fix, or a newer image
+    cd "$(dirname "$exe")" && wine "$exe" "$@"
+    # Serato's crash reporter (crashpad_handler.exe) outlives it, so waiting for
+    # Wine to go idle would keep the container up forever. Stop everything.
+    wineserver -k
+    ;;
+  *) echo "unknown option: $1" >&2; exit 2 ;;
+esac

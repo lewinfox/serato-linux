@@ -1,0 +1,35 @@
+Wine's Media Foundation writes the WAVEFORMATEX size through the size pointer
+of MFCreateWaveFormatExFromMFMediaType without checking it. Serato DJ passes
+NULL there when loading a track, and crashes. Windows accepts NULL.
+
+--- a/dlls/mfplat/mediatype.c
++++ b/dlls/mfplat/mediatype.c
+@@ -2994,7 +2994,7 @@
+ HRESULT WINAPI MFCreateWaveFormatExFromMFMediaType(IMFMediaType *mediatype, WAVEFORMATEX **ret_format,
+         UINT32 *size, UINT32 flags)
+ {
+-    UINT32 extra_size = 0, user_size;
++    UINT32 extra_size = 0, user_size, format_size;
+     WAVEFORMATEX *format;
+     GUID major, subtype, basetype = MFAudioFormat_Base;
+     void *user_data;
+@@ -3030,11 +3030,16 @@
+     if (flags == MFWaveFormatExConvertFlag_ForceExtensible)
+         extra_size = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(*format);
+ 
+-    *size = sizeof(*format) + user_size + extra_size;
+-    if (!(format = CoTaskMemAlloc(*size)))
++    format_size = sizeof(*format) + user_size + extra_size;
++    /* Windows accepts a NULL size (Serato DJ passes one). */
++    if (size)
++        *size = format_size;
++    else
++        WARN("SERATO-MFPLAT: NULL size.\n");
++    if (!(format = CoTaskMemAlloc(format_size)))
+         return E_OUTOFMEMORY;
+ 
+-    memset(format, 0, *size);
++    memset(format, 0, format_size);
+     format->wFormatTag = subtype.Data1;
+     format->cbSize = user_size + extra_size;
+     user_data = format + 1;

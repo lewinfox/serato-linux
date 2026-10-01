@@ -1,0 +1,22 @@
+Wine's DirectWrite dereferences a NULL text pointer when an application's text
+source returns no text at the position it is asked to re-read. rekordbox does
+this for some track names, and its window freezes. Treat it as end of text.
+
+--- a/dlls/dwrite/analyzer.c	2026-10-01 03:53:57.735674587 +1300
++++ b/dlls/dwrite/analyzer.c	2026-10-01 03:53:57.773830219 +1300
+@@ -439,6 +439,15 @@
+     /* Make sure to have full pair of surrogates */
+     text_source_read_more(context);
+ 
++    /* Some text sources (rekordbox's) return no text for the last position. */
++    if (context->end || !context->text || context->cursor >= context->chunk_length)
++    {
++        WARN("RBW-DWRITE: text source returned no text at %u.\n", context->position);
++        context->end = TRUE;
++        context->ch = 0;
++        return;
++    }
++
+     available = context->chunk_length - context->cursor;
+     text = context->text + context->cursor;
+ 

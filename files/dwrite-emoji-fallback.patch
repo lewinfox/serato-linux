@@ -1,0 +1,17 @@
+Wine's DirectWrite fallback table has no font for emoji or for the mathematical
+letter blocks (e.g. double-struck capitals), so they draw as empty boxes. Map them to
+fonts the image installs.
+
+--- a/dlls/dwrite/analyzer.c
++++ b/dlls/dwrite/analyzer.c
+@@ -394,6 +394,10 @@
+     { "FF00-FFEF",              L"Noto Sans CJK JP" },
+ 
+     { "1F800-1F8FF",            L"Noto Sans Symbols2, Noto Sans Symbols 2" },
++
++    /* RBW-EMOJI: Mathematical Alphanumeric Symbols, then the emoji blocks. */
++    { "1D400-1D7FF",            L"Noto Sans Math, Symbola" },
++    { "1F000-1F7FF, 1F900-1FAFF", L"Symbola" },
+ };
+ 
+ struct text_source_context

@@ -1,0 +1,37 @@
+#!/bin/sh
+# Runs as root inside the container, started by run.sh. Docker's /dev is a fixed
+# snapshot, so mirror host devices from sysfs as they come and go:
+#  - sd* disks, read-only: Wine only gives a USB stick a drive letter if its
+#    /dev/sdX1 exists, and detects FAT32 by reading its boot sector.
+#  - hidraw nodes for DJ-controller vendors only, read-write (some controllers
+#    drive jog displays/LEDs over HID). Default: Pioneer/AlphaTheta (2b73, 08e4);
+#    set HID_VENDORS="xxxx yyyy" in run.sh's environment for others. Other HID
+#    devices (keyboards, security keys) get no node, so the container can't
+#    reach them even though run.sh allows the hidraw major.
+VENDORS="$(echo "${HID_VENDORS:-2b73 08e4}" | tr 'a-f' 'A-F')"
+vendor_ok() {  # uevent has HID_ID=bus:0000VVVV:0000PPPP
+  for v in $VENDORS; do grep -q "HID_ID=.*:0000$v:" "$1" 2>/dev/null && return 0; done
+  return 1
+}
+mirror() {  # sysfs dir, /dev name, mode
+  [ -e "$1/dev" ] || return
+  [ -e "$2" ] && return
+  IFS=: read maj min < "$1/dev"
+  case $2 in /dev/sd*) type=b ;; *) type=c ;; esac
+  mknod -m "$3" "$2" "$type" "$maj" "$min" && chown 1000:1000 "$2"
+}
+while :; do
+  for d in /sys/class/block/sd*; do mirror "$d" "/dev/${d##*/}" 0400; done
+  for d in /sys/class/hidraw/hidraw*; do
+    vendor_ok "$d/device/uevent" && mirror "$d" "/dev/${d##*/}" 0600
+  done
+  # drop nodes for devices that have gone
+  for n in /dev/sd* /dev/hidraw*; do
+    [ -e "$n" ] || continue
+    case $n in /dev/sd*) s=/sys/class/block ;; *) s=/sys/class/hidraw ;; esac
+    [ -e "$s/${n##*/}" ] || rm -f "$n"
+  done
+  touch /dev/.devmirror-ready   # run.sh waits for the first pass before starting Wine
+  sleep 1
+done
+
