@@ -1,8 +1,8 @@
 # Serato DJ in Docker
 
 Serato DJ Pro or Lite (Windows build) on Linux, in an Ubuntu 24.04 image with wine-staging 11.16.
-Built from [../rkb](../rkb) (rekordbox in Docker): same container plumbing, without the
-rekordbox-specific Wine patches.
+Built from [rekordbox-linux](https://github.com/lewinfox/rekordbox-linux) (rekordbox in
+Docker): same container plumbing, without the rekordbox-specific Wine patches.
 
 **Working** (Serato DJ Lite 4.0.10, Intel UHD laptop): install, Serato account sign-in,
 SoundCloud sign-in, loading and playing tracks. **Not tried yet:** the DDJ-400 or any
@@ -10,7 +10,8 @@ other controller, USB sticks, Serato DJ Pro.
 
 Prior art: [Dowdow/seratux](https://github.com/Dowdow/seratux) installs Serato into a
 host Wine 11 prefix and registers the sign-in link. It doesn't handle controllers or
-USB yet. This repo does the same in Docker, plus the fixes below and rkb's device passthrough.
+USB yet. This repo does the same in Docker, plus the fixes below and rekordbox-linux's
+device passthrough.
 
 ## Use
 
@@ -54,12 +55,13 @@ appears in Serato as `C:\users\dj\Music`, and Serato keeps its library in `~/Mus
     the link directly.
   - Firefox sends the same link twice at once, and two links passed in together are
     both lost. So the handler delivers one at a time and skips a repeat.
+
   It logs each link (without the login code) to `data/link-handler.log`.
 - **Quitting left the container running.** Serato's crash reporter
   (`crashpad_handler.exe`) outlives it, so the launcher stops Wine when Serato exits.
-- `dwrite.dll` (text drawing) is patched as in rkb: emoji / NULL-text fixes.
+- `dwrite.dll` (text drawing) is patched as in rekordbox-linux: emoji / NULL-text fixes.
 
-## What's carried over from rkb
+## What's carried over from rekordbox-linux
 
 - GPU (Mesa GL/Vulkan), X11, PipeWire/PulseAudio, raw ALSA, USB bus, ntsync.
 - GStreamer plugins so Wine can decode MP3/AAC; Microsoft core fonts.
@@ -70,10 +72,8 @@ appears in Serato as `C:\users\dj\Music`, and Serato keeps its library in `~/Mus
 
 ## Gotchas
 
-- The Microsoft core fonts download from SourceForge during the image build. When
-  SourceForge was down (October 2026), the build failed at that step; the image was
-  built from a copy of the Dockerfile that copies the fonts out of the `rekordbox-wine`
-  image instead. A normal `make container` works once SourceForge is back.
+- The Microsoft core fonts download from SourceForge during the image build. If the
+  build fails at that step with `Failed to fetch ... 522`, SourceForge is down; retry later.
 - Serato takes ~15 seconds to start (its log reports the main thread hanging for 13 s).
 - Crash dumps land in `data/prefix/drive_c/users/dj/AppData/Local/Serato/SeratoDJ/Dumps/reports`
   after you answer Serato's crash dialog.

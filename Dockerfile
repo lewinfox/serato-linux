@@ -1,6 +1,7 @@
-# Serato DJ Pro under wine-staging 11.16 (stock, plus a patched dwrite.dll).
+# Serato DJ (Pro or Lite) under wine-staging 11.16, with patched dwrite.dll and mfplat.dll
+# and Microsoft's C++ runtime.
 # Build:  make container      Run:  ./run.sh
-# The first two layers match ../rkb's Dockerfile, so Docker reuses them if that image is built.
+# Based on github.com/lewinfox/rekordbox-linux's Dockerfile, minus its rekordbox-specific Wine patches.
 FROM ubuntu:24.04
 
 ARG WINE_PKG_VER=11.16~noble-1
@@ -70,7 +71,7 @@ RUN echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula sele
 
 # Patched Wine DLLs, built from the matching Wine source (borrowing import
 # libraries from the package) and installed over the stock ones:
-#  - dwrite.dll (text drawing), from ../rkb. Stock Wine reads a NULL pointer on
+#  - dwrite.dll (text drawing), from rekordbox-linux. Stock Wine reads a NULL pointer on
 #    some strings (emoji in track names) and has no emoji fallback font. Symbola
 #    supplies the emoji glyphs.
 #  - mfplat.dll (Media Foundation). Serato crashes loading a track: it passes a
