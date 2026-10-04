@@ -4,14 +4,30 @@
 #   ./run.sh --check          report problems, change nothing
 #   ./run.sh                  launch
 #   ./run.sh bash             a shell inside the container
+#   ./run.sh --tmp [...]      any of the above, on a throwaway copy in /tmp/serato-tmp
 # Plug the controller in BEFORE starting: Docker only sees devices present at start.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-DATA="$PWD/data"          # Wine prefix (Serato, its settings) + _Serato_ library
-mkdir -p "$DATA/prefix" "$DATA/cache"
-MUSIC="${MUSIC:-$HOME/Music}"
-RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+source ./paths.sh
+
+# --tmp: a throwaway instance in /tmp/serato-tmp. The first run copies the real prefix
+# (so Serato is installed) minus Serato's settings, and uses an empty Music folder.
+# Later --tmp runs reuse it; rm -rf /tmp/serato-tmp to start fresh.
+if [[ "${1:-}" == --tmp ]]; then
+  shift
+  TMP=/tmp/serato-tmp
+  if [[ ! -d $TMP/data/prefix ]]; then
+    echo "run.sh: copying Wine prefix to $TMP (a few GB)..." >&2
+    mkdir -p "$TMP/data"
+    cp -a "$PREFIX" "$TMP/data/prefix.partial"
+    rm -rf "$TMP/data/prefix.partial/drive_c/users/dj/AppData/Local/Serato"
+    mv "$TMP/data/prefix.partial" "$TMP/data/prefix"
+  fi
+  PREFIX="$TMP/data/prefix" CACHE="$TMP/cache" MUSIC="$TMP/Music"
+  mkdir -p "$MUSIC"
+fi
+mkdir -p "$PREFIX" "$CACHE"
 
 args=(
   --rm --name serato
@@ -30,8 +46,8 @@ args=(
   --device-cgroup-rule='b 8:* r'
   -v /run/udev:/run/udev:ro
   # data
-  -v "$DATA/prefix:/home/dj/prefix"
-  -v "$DATA/cache:/home/dj/.cache"
+  -v "$PREFIX:/home/dj/prefix"
+  -v "$CACHE:/home/dj/.cache"
   -v "$MUSIC:/home/dj/Music"
 )
 
@@ -69,7 +85,8 @@ if [[ -t 0 ]]; then args+=(-it); elif [[ "${1:-}" == bash ]]; then args+=(-i); f
 # Browser bridge: the container's xdg-open writes URLs to this FIFO, and we open
 # http(s) ones in the host browser (sign-in). Nothing else is accepted, so the
 # container can't make the host open files or run handlers.
-BRIDGE="$DATA/open-url.fifo"
+mkdir -p -m 700 "$RUNTIME/serato-wine"
+BRIDGE="$RUNTIME/serato-wine/open-url.fifo"
 rm -f "$BRIDGE" && mkfifo -m 600 "$BRIDGE"
 args+=(-v "$BRIDGE:/run/open-url")
 (
