@@ -6,7 +6,9 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 url="${1:-}"
 # Log each link (query string hidden: it holds a one-time login code) and what happened.
-LOG=data/link-handler.log
+source ./paths.sh
+mkdir -p "$STATE" "$RUNTIME/serato-wine"
+LOG="$STATE/link-handler.log"
 exec >>"$LOG" 2>&1
 echo "$(date '+%F %T') ${url%%\?*}?..."
 [[ $url == seratodjpro://* || $url == seratodjlite://* ]] || { echo "not a Serato link: $url" >&2; exit 1; }
@@ -18,12 +20,13 @@ fi
 
 # Firefox fires the same link twice at once, and two links passed in together
 # both get lost. So deliver one at a time, and skip a repeat of the last link.
-exec 9>data/link-handler.lock
+exec 9>"$RUNTIME/serato-wine/link-handler.lock"
 flock 9
-if [[ -f data/link-handler.last && "$(cat data/link-handler.last)" == "$url" ]]; then
+LAST="$RUNTIME/serato-wine/link-handler.last"
+if [[ -f $LAST && "$(cat "$LAST")" == "$url" ]]; then
   echo "  duplicate; skipped"; exit 0
 fi
-printf '%s' "$url" > data/link-handler.last
+printf '%s' "$url" > "$LAST"
 
 # Run the exe with the link rather than `wine start`: Wine's start fails with
 # "access denied" on links over ~260 characters (SoundCloud's are ~510). A second

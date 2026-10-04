@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 ROOT="$PWD"
 IMAGE=serato-wine
-SERATO="$ROOT/data/prefix/drive_c/Program Files/Serato"
+source ./paths.sh
+SERATO="$PREFIX/drive_c/Program Files/Serato"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICONS="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
 
@@ -106,6 +107,7 @@ cat <<EOF
   Launch:        Serato DJ from the app menu, or $ROOT/run.sh
   Health check:  $ROOT/run.sh --check
   Controller:    plug it in before launching
-  Music:         ~/Music appears in Serato as C:\\users\\dj\\Music
-  Data:          $ROOT/data  (Wine prefix + Serato library; back this up)
+  Music:         $MUSIC appears in Serato as C:\\users\\dj\\Music
+  Library:       $MUSIC/_Serato_  (back this up)
+  Wine prefix:   $PREFIX
 EOF

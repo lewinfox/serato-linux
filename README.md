@@ -22,6 +22,7 @@ make container                   # just (re)build the image
 ./run.sh                         # launch (or "Serato DJ" in the app menu)
 ./run.sh --check                 # health check
 ./run.sh bash                    # shell in the container
+./run.sh --tmp                   # throwaway instance in /tmp/serato-tmp (copy of the prefix, fresh settings, empty Music)
 ```
 
 The installer needs a (free) Serato account to download, from
@@ -29,9 +30,9 @@ The installer needs a (free) Serato account to download, from
 `.exe` or `.zip` both work.
 
 Plug the controller in before `./run.sh`: Docker only sees devices present at start
-(though `/dev/snd` is shared live). The Wine prefix lives in `data/prefix`; `~/Music`
-appears in Serato as `C:\users\dj\Music`, and Serato keeps its library in `~/Music/_Serato_`
-(logs in `~/Music/_Serato_/Logs`).
+(though `/dev/snd` is shared live). The Wine prefix lives in `~/.local/share/serato-wine/prefix`
+(`$XDG_DATA_HOME`). Your music folder (`xdg-user-dir MUSIC`, usually `~/Music`) appears in Serato
+as `C:\users\dj\Music`, and Serato keeps its library in `_Serato_` there (logs in `_Serato_/Logs`).
 
 ## Fixes needed to get this far
 
@@ -56,7 +57,7 @@ appears in Serato as `C:\users\dj\Music`, and Serato keeps its library in `~/Mus
   - Firefox sends the same link twice at once, and two links passed in together are
     both lost. So the handler delivers one at a time and skips a repeat.
 
-  It logs each link (without the login code) to `data/link-handler.log`.
+  It logs each link (without the login code) to `~/.local/state/serato-wine/link-handler.log`.
 - **Quitting left the container running.** Serato's crash reporter
   (`crashpad_handler.exe`) outlives it, so the launcher stops Wine when Serato exits.
 - `dwrite.dll` (text drawing) is patched as in rekordbox-linux: emoji / NULL-text fixes.
@@ -75,7 +76,7 @@ appears in Serato as `C:\users\dj\Music`, and Serato keeps its library in `~/Mus
 - The Microsoft core fonts download from SourceForge during the image build. If the
   build fails at that step with `Failed to fetch ... 522`, SourceForge is down; retry later.
 - Serato takes ~15 seconds to start (its log reports the main thread hanging for 13 s).
-- Crash dumps land in `data/prefix/drive_c/users/dj/AppData/Local/Serato/SeratoDJ/Dumps/reports`
+- Crash dumps land in `~/.local/share/serato-wine/prefix/drive_c/users/dj/AppData/Local/Serato/SeratoDJ/Dumps/reports`
   after you answer Serato's crash dialog.
 
 ## Controllers (not tried yet)
